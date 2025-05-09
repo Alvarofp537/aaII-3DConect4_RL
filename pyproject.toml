@@ -7,7 +7,7 @@ name = "connect-n-3d"
 authors = [
     { name = "blazaid", email = "alber.diaz@proton.me" }
 ]
-version = "0.0.1"
+version = "0.0.2"
 description = "Connect-N game in a 3d board as a gymnasium environment"
 readme = "README.md"
 license = "GPL-3.0-or-later"
