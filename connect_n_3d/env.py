@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from .board import ConnectNBoard3D
+from .board import ConnectNBoard3D, Board
 
 
 class ConnectN3DEnv(gym.Env):
@@ -53,13 +53,6 @@ class ConnectN3DEnv(gym.Env):
 
         # Action space: All available columns (x, y)
         self.action_space = spaces.MultiDiscrete([width, depth])
-        # Observation space: Basically, the board (0 = empty, >0 = player id)
-        self.observation_space = spaces.Box(
-            low=0,
-            high=self.board.num_players,
-            shape=self.board.grid.shape,
-            dtype=np.int8,
-        )
         # Player IDs are 1 to num_players
         self.current_player = 1
 
@@ -68,7 +61,7 @@ class ConnectN3DEnv(gym.Env):
             *,
             seed: Optional[int] = None,
             options: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+    ) -> Tuple[Board, Dict[str, Any]]:
         """Resets the environment to an initial state.
 
         :param seed: Random seed for reproducibility.
@@ -83,7 +76,7 @@ class ConnectN3DEnv(gym.Env):
     def step(
             self, *,
             action: Tuple[int, int]
-    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+    ) -> Tuple[Board, float, bool, bool, Dict[str, Any]]:
         """Performs one step in the environment.
 
         :param action: The action to perform (x, y) coordinates.
@@ -122,7 +115,7 @@ class ConnectN3DEnv(gym.Env):
             "winner": winner
         }
 
-    def get_obs(self) -> np.ndarray:
+    def get_obs(self) -> Board:
         """Returns the current observation of the environment.
 
         :return: The current observation of the environment.
