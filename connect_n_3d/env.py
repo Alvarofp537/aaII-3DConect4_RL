@@ -98,13 +98,13 @@ class ConnectN3DEnv(gym.Env):
             # Illegal move; negative reward and change turn
             penalty = -1.0
             self.current_player = (self.current_player % self.num_players) + 1
-            return self.get_obs, penalty, False, False, {
+            return self.get_obs(), penalty, False, False, {
                 "illegal_move": True,
                 "offender": (self.current_player - 1) or self.num_players,
             }
 
         # It was a valid move, so let's first check if we're done
-        winner = self.board.check_winner()
+        winner = self.board.check_winner()   # Either the player or None
         terminated = winner is not None or self.board.is_full()
 
         # ¡And now, the reward!
@@ -112,13 +112,13 @@ class ConnectN3DEnv(gym.Env):
             if winner is None:
                 reward = 0.0  # Draw
             else:
-                reward = 1.0  # otro jugador ganó antes de su turno
+                reward = 1.0  # The player won the match
         else:
             # There's no winner yet, so we give a reward of 0.0
             reward = 0.0
             self.current_player = (self.current_player % self.num_players) + 1
 
-        return self.get_obs, reward, terminated, False, {
+        return self.get_obs(), reward, terminated, False, {
             "winner": winner
         }
 
