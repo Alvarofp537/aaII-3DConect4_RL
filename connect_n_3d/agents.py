@@ -3,7 +3,7 @@ import abc
 import random
 from typing import Tuple
 
-from .board import ConnectNBoard3D
+from .board import ConnectNBoard3D, Board
 
 
 class Agent(metaclass=abc.ABCMeta):
@@ -38,10 +38,10 @@ class Agent(metaclass=abc.ABCMeta):
 
     def learn(
             self, *,
-            obs: Tuple[int, int],
+            obs: Board,
             action: Tuple[int, int],
             reward: float,
-            next_obs: Tuple[int, int],
+            next_obs: Board,
             done: bool,
     ) -> None:
         """Update the agent's knowledge.

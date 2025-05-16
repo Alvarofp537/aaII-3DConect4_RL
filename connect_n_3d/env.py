@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from .board import ConnectNBoard3D
+from .board import ConnectNBoard3D, Board
 
 
 class ConnectN3DEnv(gym.Env):
@@ -53,13 +53,6 @@ class ConnectN3DEnv(gym.Env):
 
         # Action space: All available columns (x, y)
         self.action_space = spaces.MultiDiscrete([width, depth])
-        # Observation space: Basically, the board (0 = empty, >0 = player id)
-        self.observation_space = spaces.Box(
-            low=0,
-            high=self.board.num_players,
-            shape=self.board.grid.shape,
-            dtype=np.int8,
-        )
         # Player IDs are 1 to num_players
         self.current_player = 1
 
@@ -68,7 +61,7 @@ class ConnectN3DEnv(gym.Env):
             *,
             seed: Optional[int] = None,
             options: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+    ) -> Tuple[Board, Dict[str, Any]]:
         """Resets the environment to an initial state.
 
         :param seed: Random seed for reproducibility.
@@ -83,7 +76,7 @@ class ConnectN3DEnv(gym.Env):
     def step(
             self, *,
             action: Tuple[int, int]
-    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+    ) -> Tuple[Board, float, bool, bool, Dict[str, Any]]:
         """Performs one step in the environment.
 
         :param action: The action to perform (x, y) coordinates.
@@ -98,13 +91,13 @@ class ConnectN3DEnv(gym.Env):
             # Illegal move; negative reward and change turn
             penalty = -1.0
             self.current_player = (self.current_player % self.num_players) + 1
-            return self.get_obs, penalty, False, False, {
+            return self.get_obs(), penalty, False, False, {
                 "illegal_move": True,
                 "offender": (self.current_player - 1) or self.num_players,
             }
 
         # It was a valid move, so let's first check if we're done
-        winner = self.board.check_winner()
+        winner = self.board.check_winner()   # Either the player or None
         terminated = winner is not None or self.board.is_full()
 
         # ¡And now, the reward!
@@ -112,17 +105,17 @@ class ConnectN3DEnv(gym.Env):
             if winner is None:
                 reward = 0.0  # Draw
             else:
-                reward = 1.0  # otro jugador ganó antes de su turno
+                reward = 1.0  # The player won the match
         else:
             # There's no winner yet, so we give a reward of 0.0
             reward = 0.0
             self.current_player = (self.current_player % self.num_players) + 1
 
-        return self.get_obs, reward, terminated, False, {
+        return self.get_obs(), reward, terminated, False, {
             "winner": winner
         }
 
-    def get_obs(self) -> np.ndarray:
+    def get_obs(self) -> Board:
         """Returns the current observation of the environment.
 
         :return: The current observation of the environment.

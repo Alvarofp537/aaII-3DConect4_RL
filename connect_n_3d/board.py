@@ -16,9 +16,12 @@ search agents or learning environments (e.g., Farama Gymnasium):
 The implementation tries to avoid any game-flow logic so that the board
 is reusable in environments with different penalty / reward schemes.
 """
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Annotated
 
 import numpy as np
+from numpy.typing import NDArray
+
+Board = Annotated[NDArray[np.int8], "3D array of board state"]
 
 
 class ConnectNBoard3D:
@@ -81,7 +84,7 @@ class ConnectNBoard3D:
         self.n_to_connect = n_to_connect
         self.num_players = num_players
 
-        self.grid: np.ndarray = np.zeros((height, width, depth), dtype=np.int8)
+        self.grid: Board = np.zeros((height, width, depth), dtype=np.int8)
         self.last_move: Optional[Tuple[int, int, int, int]] = None  # (player, x, y, z)
 
     def reset(self) -> None:
