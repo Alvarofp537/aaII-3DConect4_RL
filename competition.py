@@ -4,8 +4,13 @@ import itertools
 import random
 import statistics
 from typing import List
-from A2C import A2C
 from connect_n_3d import ConnectN3DEnv, RandomAgent, Agent
+
+
+from A2C import A2C
+from Blocker import Blocker
+from Selfish import Selfish
+from Minimax import Minimax
 
 
 def play_episode(*, env: ConnectN3DEnv, agents, learn: bool = False) -> Agent:
@@ -40,6 +45,8 @@ def play_episode(*, env: ConnectN3DEnv, agents, learn: bool = False) -> Agent:
         obs = next_obs
 
     return agents[info["winner"] - 1] if info["winner"] else None
+
+
 
 
 def tournament(
@@ -81,20 +88,26 @@ def tournament(
             mu=statistics.mean(rounds_for_all),
             sigma=statistics.stdev(rounds_for_all)
         )))
+        print(f'Entrenamos por {train_rounds} rondas')
         env = ConnectN3DEnv(num_players=competitors_per_round)
-        for _ in range(train_rounds):
-            _ = play_episode(env=env, agents=group, learn=True)
-
+        for i in range(train_rounds):
+            r = play_episode(env=env, agents=group, learn=True)
+            if (train_rounds + 1)%100 == 0:
+                print('Winner:',str(r),'\n','\n')
+            print(f"Iteración: {i} de {train_rounds}", end="\r")
+        print(f"Entrenamiento finalizado con {train_rounds}")
         # Ronda de competición. Ahora no van a aprender, sino que van a
         # competir directamente, y el ranking se asignará según el
         # resultado de la partida. Los puntos se irán repartiendo de
         # acuerdo al máximo en el caso del primer jugador, y se irán
         # restando puntos en función de la posición en la que haya
         # quedado el jugador.
+        print('Jugamos')
         winners = collections.Counter([
             play_episode(env=env, agents=group, learn=False)
             for _ in range(num_rounds)
         ])
+
 
         # Ahora seguimos jugando hasta que todos los jugadores tengan
         # un número diferente de victorias. Esto es para evitar que
