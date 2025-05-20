@@ -6,6 +6,7 @@ import statistics
 from typing import List
 from connect_n_3d import ConnectN3DEnv, RandomAgent, Agent
 
+import numpy as np
 
 from A2C import A2C
 from Blocker import Blocker
@@ -56,6 +57,7 @@ def tournament(
         num_rounds: int = 10,
         max_score: int = 10,
         score_to_substract: int = 5,
+        max_training_rounds = np.inf
 ):
     """Torneo de *N* jugadores.
 
@@ -88,13 +90,12 @@ def tournament(
             mu=statistics.mean(rounds_for_all),
             sigma=statistics.stdev(rounds_for_all)
         )))
-        print(f'Entrenamos por {train_rounds} rondas')
         env = ConnectN3DEnv(num_players=competitors_per_round)
+        if train_rounds > max_training_rounds:
+            train_rounds = max_training_rounds
         for i in range(train_rounds):
-            r = play_episode(env=env, agents=group, learn=True)
-            if (train_rounds + 1)%100 == 0:
-                print('Winner:',str(r),'\n','\n')
-            print(f"Iteración: {i} de {train_rounds}", end="\r")
+            _ = play_episode(env=env, agents=group, learn=True)
+            print(f"Entrenando: {i} de {train_rounds} rondas", end="\r")
         print(f"Entrenamiento finalizado con {train_rounds}")
         # Ronda de competición. Ahora no van a aprender, sino que van a
         # competir directamente, y el ranking se asignará según el
