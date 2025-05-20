@@ -14,7 +14,7 @@ from Selfish import Selfish
 from Minimax import Minimax
 
 
-def play_episode(*, env: ConnectN3DEnv, agents, learn: bool = False) -> Agent:
+def play_episode(*, env: ConnectN3DEnv, agents, learn: bool = False, imprimir= False) -> Agent:
     """Juega una partida completa entre varios agentes.
 
     :param env: El entorno ConnectN3D en el que se va a jugar.
@@ -44,7 +44,11 @@ def play_episode(*, env: ConnectN3DEnv, agents, learn: bool = False) -> Agent:
             )
         # Vemos el nuevo estado del entorno para el próximo jugador
         obs = next_obs
-
+    if imprimir:
+        if not learn:
+            print('Ganador:',agents[info["winner"] - 1] if info["winner"] else None)
+        else:
+            print('Ganador:',agents[info["winner"] - 1] if info["winner"] else None, end='\r')
     return agents[info["winner"] - 1] if info["winner"] else None
 
 
@@ -57,7 +61,8 @@ def tournament(
         num_rounds: int = 10,
         max_score: int = 10,
         score_to_substract: int = 5,
-        max_training_rounds = np.inf
+        max_training_rounds = np.inf,
+        imprimir= False
 ):
     """Torneo de *N* jugadores.
 
@@ -94,7 +99,7 @@ def tournament(
         if train_rounds > max_training_rounds:
             train_rounds = max_training_rounds
         for i in range(train_rounds):
-            _ = play_episode(env=env, agents=group, learn=True)
+            _ = play_episode(env=env, agents=group, learn=True, imprimir=imprimir)
             print(f"Entrenando: {i} de {train_rounds} rondas", end="\r")
         print(f"Entrenamiento finalizado con {train_rounds}")
         # Ronda de competición. Ahora no van a aprender, sino que van a
@@ -105,7 +110,7 @@ def tournament(
         # quedado el jugador.
         print('Jugamos')
         winners = collections.Counter([
-            play_episode(env=env, agents=group, learn=False)
+            play_episode(env=env, agents=group, learn=False, imprimir=imprimir)
             for _ in range(num_rounds)
         ])
 
