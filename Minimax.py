@@ -29,7 +29,7 @@ class Minimax(Agent):
         elif winner and winner != self.pos:
             return -10000 - depth, None
         elif depth == 0 or board.is_full():
-            return self.evaluate(board), None
+            return self.custom_reward(board, self.pos), None
 
         best_value = float('-inf') if maximizing else float('inf')
         best_action = None
@@ -60,38 +60,88 @@ class Minimax(Agent):
 
         return best_value, best_action
 
-    def evaluate(self, board: ConnectNBoard3D) -> int:
-        """Simple heuristic: maximize own alignment, penalize others'."""
-        score = 0
-        for z in range(board.height):
-            for x in range(board.width):
-                for y in range(board.depth):
-                    player = board.grid[z, x, y]
-                    if player == 0:
+    
+    def count_connections(self, board: ConnectNBoard3D, player_id: int, length: int, open_ends: bool = True) -> int:
+        count = 0
+        visited = set()
+
+        gx, gy, gz = board.width, board.depth, board.height
+        grid = board.grid
+        n = board.n_to_connect
+
+        for z in range(gz):
+            for x in range(gx):
+                for y in range(gy):
+                    if grid[z, x, y] != player_id:
                         continue
-                    val = self.count_alignment(board.grid, x, y, z, player, board)
-                    if player == self.pos:
-                        score += val
-                    else:
-                        score -= val
+                    for dx, dy, dz in board.DIRECTIONS:
+                        key = tuple(sorted([(x + i * dx, y + i * dy, z + i * dz) for i in range(length)]))
+                        if key in visited:
+                            continue
+
+                        segment = []
+                        for i in range(length):
+                            xi, yi, zi = x + i * dx, y + i * dy, z + i * dz
+                            if 0 <= xi < gx and 0 <= yi < gy and 0 <= zi < gz and grid[zi, xi, yi] == player_id:
+                                segment.append((xi, yi, zi))
+                            else:
+                                break
+                        if len(segment) != length:
+                            continue
+
+                        visited.add(key)
+
+                        # Check for open ends if requested
+                        if open_ends:
+                            before = (x - dx, y - dy, z - dz)
+                            after = (x + length * dx, y + length * dy, z + length * dz)
+
+                            open_before = (0 <= before[0] < gx and 0 <= before[1] < gy and 0 <= before[2] < gz and grid[before[2], before[0], before[1]] == 0)
+                            open_after = (0 <= after[0] < gx and 0 <= after[1] < gy and 0 <= after[2] < gz and grid[after[2], after[0], after[1]] == 0)
+
+                            if not (open_before or open_after):
+                                continue
+
+                        count += 1
+        return count
+    
+    def custom_reward(self, board: ConnectNBoard3D, player_id: int) -> float:
+        # Hiperparámetros (puedes ajustarlos luego)
+        WEIGHTS = {
+            "conn_2": 1.4,
+            "conn_3": 5.0,
+            "conn_blocked_penalty": 0.2,
+            "opp_conn_2": 0.6,
+            "opp_conn_3": 2.0,
+            "center_bonus": 0.6,
+            "height_bonus": 0.1,
+        }
+
+        score = 0.0
+
+        # Bonificaciones por conexiones propias abiertas
+        score += WEIGHTS["conn_2"] * self.count_connections(board, player_id, 2, open_ends=True)
+        score += WEIGHTS["conn_3"] * self.count_connections(board, player_id, 3, open_ends=True)
+
+        # Penalización por conexiones propias bloqueadas
+        score -= WEIGHTS["conn_blocked_penalty"] * self.count_connections(board, player_id, 3, open_ends=False)
+
+        # Penalizaciones por conexiones peligrosas del rival
+        for opp_id in range(1, board.num_players + 1):
+            if opp_id == player_id:
+                continue
+            score -= WEIGHTS["opp_conn_2"] * self.count_connections(board, opp_id, 2, open_ends=True)
+            score -= WEIGHTS["opp_conn_3"] * self.count_connections(board, opp_id, 3, open_ends=True)
+
+        # Control del centro (bonus por controlar el centro del tablero)
+        cx, cy = board.width // 2, board.depth // 2
+        score += WEIGHTS["center_bonus"] * np.count_nonzero(board.grid[:, cx, cy] == player_id)
+
+        # Bonus por ocupar capas superiores
+        for z in range(board.height):
+            score += WEIGHTS["height_bonus"] * np.count_nonzero(board.grid[z] == player_id) * z
+
         return score
-
-    def count_alignment(self, grid, x0, y0, z0, player, board):
-        max_count = 1
-        for dx, dy, dz in board.DIRECTIONS:
-            count = 1
-            x, y, z = x0 + dx, y0 + dy, z0 + dz
-            while 0 <= x < board.width and 0 <= y < board.depth and 0 <= z < board.height and grid[z, x, y] == player:
-                count += 1
-                x, y, z = x + dx, y + dy, z + dz
-
-            x, y, z = x0 - dx, y0 - dy, z0 - dz
-            while 0 <= x < board.width and 0 <= y < board.depth and 0 <= z < board.height and grid[z, x, y] == player:
-                count += 1
-                x, y, z = x - dx, y - dy, z - dz
-
-            max_count = max(max_count, count)
-        return max_count
 
     def learn(self, obs, action, reward, next_obs, done):
         pass

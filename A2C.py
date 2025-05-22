@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import os
 import numpy as np
 
+class NoDeberíaPasar(Exception):
+    pass
 
 class A2CNetwork(nn.Module):
     def __init__(self, height, width, depth):
@@ -95,9 +97,8 @@ class A2C(Agent):
     def QuienSoy(self, grid: np.ndarray, player_id: int) -> np.ndarray:
         new_grid = grid.copy()
         new_grid[grid == player_id] = -1  # Soy yo
-        if player_id < 4:
-            new_grid[grid == 4] = player_id # Normalizamos siempre [-1,0,1,2,3]
-        # No se toca el resto: los demás jugadores se quedan como están (1, 2, 3, 4), excepto el propio
+        if player_id < self.num_players:
+            new_grid[grid == self.num_players] = player_id # Normalizamos siempre a [-1,0,1,2,3]
         return new_grid
 
     def get_valid_mask(self, board: ConnectNBoard3D) -> torch.Tensor:
@@ -110,26 +111,15 @@ class A2C(Agent):
 
         return valid
 
-    def obs_to_board(self, obs: np.ndarray) -> ConnectNBoard3D:
-        board = ConnectNBoard3D(
-            width=self.model.width,
-            depth=self.model.depth,
-            height=self.model.height,
-            n_to_connect=4,
-            num_players=self.num_players
-        )
-        board.grid = obs.copy()
-        return board
 
-
-    def select_action(self, board: ConnectNBoard3D) -> Tuple[int, int]:
+    def select_action(self, board: ConnectNBoard3D, returnValues=False) -> Tuple[int, int]:
         """Selects a action.
 
         :param board: The current game board state.
         :return: (x, y) move for the current board state.
         """
         count = np.count_nonzero(board.grid)
-        if count < 4:
+        if count < self.num_players:
             self.pos = count + 1
 
         if self.played == self.learnt or count < self.num_players:
@@ -141,10 +131,106 @@ class A2C(Agent):
         grid = self.QuienSoy(board.grid, self.pos)
         state = torch.tensor(grid, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
 
-        # valid_mask = self.get_valid_mask(board).unsqueeze(0)
+        valid_mask = self.get_valid_mask(board).unsqueeze(0)
 
-        _, action, _ = self.model.forward(state, valid_mask=None, deterministic=deterministic)
+        _, action, value = self.model.forward(state, valid_mask=valid_mask, deterministic=deterministic)
+        if returnValues:
+            return action, value
         return action # Devuelve las coordenadas
+
+    
+    def obs_to_board(self, obs: np.ndarray) -> ConnectNBoard3D:
+        board = ConnectNBoard3D(
+            width=self.model.width,
+            depth=self.model.depth,
+            height=self.model.height,
+            n_to_connect=4,
+            num_players=self.num_players
+        )
+        board.grid = obs.copy()
+        return board
+
+    def count_connections(self, board: ConnectNBoard3D, player_id: int, length: int, open_ends: bool = True) -> int:
+        count = 0
+        visited = set()
+
+        gx, gy, gz = board.width, board.depth, board.height
+        grid = board.grid
+        n = board.n_to_connect
+
+        for z in range(gz):
+            for x in range(gx):
+                for y in range(gy):
+                    if grid[z, x, y] != player_id:
+                        continue
+                    for dx, dy, dz in board.DIRECTIONS:
+                        key = tuple(sorted([(x + i * dx, y + i * dy, z + i * dz) for i in range(length)]))
+                        if key in visited:
+                            continue
+
+                        segment = []
+                        for i in range(length):
+                            xi, yi, zi = x + i * dx, y + i * dy, z + i * dz
+                            if 0 <= xi < gx and 0 <= yi < gy and 0 <= zi < gz and grid[zi, xi, yi] == player_id:
+                                segment.append((xi, yi, zi))
+                            else:
+                                break
+                        if len(segment) != length:
+                            continue
+
+                        visited.add(key)
+
+                        # Check for open ends if requested
+                        if open_ends:
+                            before = (x - dx, y - dy, z - dz)
+                            after = (x + length * dx, y + length * dy, z + length * dz)
+
+                            open_before = (0 <= before[0] < gx and 0 <= before[1] < gy and 0 <= before[2] < gz and grid[before[2], before[0], before[1]] == 0)
+                            open_after = (0 <= after[0] < gx and 0 <= after[1] < gy and 0 <= after[2] < gz and grid[after[2], after[0], after[1]] == 0)
+
+                            if not (open_before or open_after):
+                                continue
+
+                        count += 1
+        return count
+    
+    def custom_reward(self, board: ConnectNBoard3D, player_id: int) -> float:
+        # Hiperparámetros (puedes ajustarlos luego)
+        WEIGHTS = {
+            "conn_2": 1.4,
+            "conn_3": 5.0,
+            "conn_blocked_penalty": 0.2,
+            "opp_conn_2": 0.6,
+            "opp_conn_3": 2.0,
+            "center_bonus": 0.6,
+            "height_bonus": 0.1,
+        }
+
+        score = 0.0
+
+        # Bonificaciones por conexiones propias abiertas
+        score += WEIGHTS["conn_2"] * self.count_connections(board, player_id, 2, open_ends=True)
+        score += WEIGHTS["conn_3"] * self.count_connections(board, player_id, 3, open_ends=True)
+
+        # Penalización por conexiones propias bloqueadas
+        score -= WEIGHTS["conn_blocked_penalty"] * self.count_connections(board, player_id, 3, open_ends=False)
+
+        # Penalizaciones por conexiones peligrosas del rival
+        for opp_id in range(1, board.num_players + 1):
+            if opp_id == player_id:
+                continue
+            score -= WEIGHTS["opp_conn_2"] * self.count_connections(board, opp_id, 2, open_ends=True)
+            score -= WEIGHTS["opp_conn_3"] * self.count_connections(board, opp_id, 3, open_ends=True)
+
+        # Control del centro (bonus por controlar el centro del tablero)
+        cx, cy = board.width // 2, board.depth // 2
+        score += WEIGHTS["center_bonus"] * np.count_nonzero(board.grid[:, cx, cy] == player_id)
+
+        # Bonus por ocupar capas superiores
+        for z in range(board.height):
+            score += WEIGHTS["height_bonus"] * np.count_nonzero(board.grid[z] == player_id) * z
+
+        return score
 
 
     def learn(self, obs, action, reward, next_obs, done):
@@ -157,41 +243,54 @@ class A2C(Agent):
         :param next_obs: El siguiente estado del tablero.
         :param done: Indica si el episodio ha terminado.
         """
+        if reward < 0:
+            print('Movimiento ilegal')
+            raise NoDeberíaPasar()
+        reward_extra = 0
+        if reward == 1:
+            reward_extra = 20
         torch.save(self.model.state_dict(), f"{self.name}.pth")
         self.learnt += 1
         if self.learnt < self.played: # Ronda nueva
             self.played = 0
             self.learnt = 0
 
-        # Convertimos las observaciones a tensores
+
         try:
+            # Normalizamos el tablero
+            obs = self.QuienSoy(obs, self.pos)
+            next_obs = self.QuienSoy(next_obs, self.pos)
+
+            # 
             board = self.obs_to_board(obs)
             next_board = self.obs_to_board(next_obs)
-            obs_grid = self.QuienSoy(obs, self.pos)
-            next_obs_grid = self.QuienSoy(next_obs, self.pos)
+            
+            # Convertimos las observaciones a tensores
+            obs = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+            next_obs = torch.tensor(next_obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
 
-            obs = torch.tensor(obs_grid, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-            next_obs = torch.tensor(next_obs_grid, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
 
-
-            # valid_mask = self.get_valid_mask(board).unsqueeze(0) 
-            # next_valid_mask = self.get_valid_mask(next_board).unsqueeze(0)
+            valid_mask = self.get_valid_mask(board).unsqueeze(0) 
+            next_valid_mask = self.get_valid_mask(next_board).unsqueeze(0)
             
             # Obtención de probabilidades de acción y valores del estado actual
-            action_probs, _, value = self.model.forward(obs, valid_mask=None) # `action_probs` es el tensor de probabilidades
+            action_probs, _, value = self.model.forward(obs, valid_mask=valid_mask) # `action_probs` es el tensor de probabilidades
 
             if done: # Evitamos errores
                 next_value = torch.tensor([[0.0]])
             else:
-                _, _, next_value = self.model.forward(next_obs, valid_mask=None)
+                _, _, next_value = self.model.forward(next_obs, valid_mask=next_valid_mask)
 
 
             # Convertimos `(x, y)` en un índice válido dentro del vector de probabilidades
-            action_idx = action[0] * self.model.width + action[1]  
+            action_idx = action[0] * self.model.depth + action[1]  
 
             log_action_prob = torch.log(action_probs.view(-1)[action_idx])  
 
             # Calcular recompensa futura esperada
+            reward = self.custom_reward(next_board, self.pos) - self.custom_reward(board, self.pos)
+            if done:
+                reward += reward_extra # Si ha ganado damos gran premio
             target_value = reward + (1 - done) * self.gamma * next_value
 
             # Ventaja: diferencia entre el valor esperado y el valor actual
@@ -215,8 +314,76 @@ class A2C(Agent):
         finally:
             torch.save(self.model.state_dict(), f"{self.name}.pth")
 
+    def compute_GAE(self, rewards, values, gamma=0.95, lam=0.95):
+        """
+        Calcula la estimación de ventaja generalizada (GAE).
+        
+        :param rewards: Lista de recompensas en el episodio.
+        :param values: Lista de valores estimados por el crítico.
+        :param gamma: Factor de descuento para recompensas futuras.
+        :param lam: Parámetro de regularización de GAE.
+        :return: Lista de ventajas ajustadas.
+        """
+        advantages = torch.zeros_like(rewards)
+        last_advantage = 0
+        
+        for t in reversed(range(len(rewards) - 1)):
+            delta = rewards[t] + gamma * values[t + 1] - values[t]
+            advantages[t] = last_advantage = delta + gamma * lam * last_advantage
 
+        return advantages
 
+    # Implementación dentro de la clase A2C
+    def GAE_learn(self, trajectory, gamma=0.95, lam=0.95):
+        """
+        Aprende usando Generalized Advantage Estimation.
+        
+        :param trajectory: Lista de estados, acciones, recompensas y valores.
+        :param gamma: Factor de descuento.
+        :param lam: Parámetro de regularización.
+        """
+        advantages = []
+        self.model.load_state_dict(torch.load(f"./{self.name}.pth"))
+        for (obs, action, reward, next_obs, done, value) in trajectory:
+            board = self.obs_to_board(obs)
+            next_board = self.obs_to_board(next_obs)
+            
+            # Convertimos las observaciones a tensores
+            obs = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+            next_obs = torch.tensor(next_obs, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+
+            valid_mask = self.get_valid_mask(board).unsqueeze(0)
+            next_valid_mask = self.get_valid_mask(next_board).unsqueeze(0)
+
+            # Obtención de probabilidades de acción y valores
+            action_probs, _, value_pred = self.model.forward(obs, valid_mask=valid_mask)
+            
+            if done:
+                next_value = torch.tensor([[0.0]])  # Valor futuro en estado terminal
+            else:
+                _, _, next_value = self.model.forward(next_obs, valid_mask=next_valid_mask)
+
+            # Convertimos `(x, y)` en índice válido
+            action_idx = action[0] * self.model.depth + action[1]
+
+            log_action_prob = torch.log(action_probs.view(-1)[action_idx])
+
+            # Calculamos ventaja con GAE
+            delta = reward + gamma * next_value - value
+            advantage = delta + gamma * lam * (advantages[-1] if advantages else 0)
+            advantages.append(advantage)
+
+            # Pérdidas Actor y Crítico
+            actor_loss = -log_action_prob * advantage.detach()
+            critic_loss = F.mse_loss(value_pred, (reward + gamma * next_value).detach())
+
+            # Retropropagación y actualización
+            loss = actor_loss + critic_loss
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+        torch.save(self.model.state_dict(), f"{self.name}.pth")
 
         
     def get_training_rounds(self) -> int:

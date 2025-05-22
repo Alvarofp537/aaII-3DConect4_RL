@@ -128,6 +128,7 @@ class DuelingDQNAgent(Agent):
         
 
     def learn(self, obs, action, reward, next_obs, done):
+        self.model.load_state_dict(torch.load(f"./{self.name}.pth"))
         """
         Actualiza los parámetros de la red DQN usando Bellman
         """
