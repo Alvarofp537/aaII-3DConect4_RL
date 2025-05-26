@@ -8,6 +8,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+import copy
+
 
 class DuelingDQNNetwork(nn.Module):
     def __init__(self, height, width, depth):
@@ -80,6 +82,9 @@ class DuelingDQNAgent(Agent):
 
 
         self.pos = None
+        self.target_model = copy.deepcopy(self.model)
+        self.replay_buffer = ReplayBuffer()
+        self.batch_size = 64
 
     def QuienSoy(self, grid: np.ndarray, player_id: int) -> np.ndarray:
         new_grid = grid.copy()
@@ -117,6 +122,7 @@ class DuelingDQNAgent(Agent):
         count = np.count_nonzero(board.grid)
         if count < self.num_players:
             self.pos = count + 1
+            self.steps = 0
         if random.random() < self.epsilon:
             # Acción aleatoria válida
             action = random.choice(board.legal_moves())
@@ -231,42 +237,68 @@ class DuelingDQNAgent(Agent):
 
     def learn(self, obs, action, reward, next_obs, done):
         self.model.load_state_dict(torch.load(f"./{self.name}.pth"))
-        """
-        Actualiza los parámetros de la red DQN usando Bellman
-        """
+
         try:
-            board = self.obs_to_board(obs)
-            next_board = self.obs_to_board(next_obs)
+            # Transform observations with QuienSoy
             obs_grid = self.QuienSoy(obs, self.pos)
             next_obs_grid = self.QuienSoy(next_obs, self.pos)
 
-            obs = torch.tensor(obs_grid, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-            next_obs = torch.tensor(next_obs_grid, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-
-            q_values = self.model(obs)
-            action_idx = action[0] * self.model.depth + action[1]
-            q_value = q_values.view(-1)[action_idx]
-
-            with torch.no_grad():
-                next_q_values = self.model(next_obs)
-                max_next_q_value = next_q_values.max(dim=1)[0]
-            if reward < 0: # Movimiento invalido:
-                reward = -100
+            # Recompute the reward BEFORE storing it
+            board = self.obs_to_board(obs)
+            next_board = self.obs_to_board(next_obs)
+            if reward < 0:
+                reward = -100  # invalid move penalty
             else:
-                reward  = self.custom_reward(next_board, self.pos, done, reward) - self.custom_reward(board, self.pos, 0, 0)
-            target_q_value = reward + (1 - done) * self.gamma * max_next_q_value
-            loss = F.mse_loss(q_value, target_q_value)
+                reward = self.custom_reward(next_board, self.pos, done, reward) - self.custom_reward(board, self.pos, False, 0)
 
+            # Push to replay buffer (transformed obs, recomputed reward)
+            self.replay_buffer.push(obs_grid, action, reward, next_obs_grid, done)
+
+            # Skip training if buffer is not full enough
+            if len(self.replay_buffer) < self.batch_size:
+                return
+
+            # Sample from buffer
+            batch_obs, batch_actions, batch_rewards, batch_next_obs, batch_dones = self.replay_buffer.sample(self.batch_size)
+
+            batch_obs_tensor = torch.tensor(batch_obs, dtype=torch.float32)
+            batch_next_obs_tensor = torch.tensor(batch_next_obs, dtype=torch.float32)
+            batch_rewards_tensor = torch.tensor(batch_rewards, dtype=torch.float32)
+            batch_dones_tensor = torch.tensor(batch_dones, dtype=torch.float32)
+
+            # Compute current Q-values
+            q_values = self.model(batch_obs_tensor)
+            action_indices = torch.tensor(
+                [a[0] * self.model.depth + a[1] for a in batch_actions], dtype=torch.long
+            )
+            current_q_values = q_values.gather(1, action_indices.unsqueeze(1)).squeeze(1)
+
+            # Compute target Q-values from target network
+            with torch.no_grad():
+                next_q_values = self.target_model(batch_next_obs_tensor)
+                max_next_q_values = next_q_values.max(dim=1)[0]
+
+            target_q_values = batch_rewards_tensor + (1 - batch_dones_tensor) * self.gamma * max_next_q_values
+
+            # Compute loss and update
+            loss = F.mse_loss(current_q_values, target_q_values)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
+            # Sync target model
+            if self.steps % 30 == 0:
+                self.target_model.load_state_dict(self.model.state_dict())
+
+            self.steps += 1
+
         except Exception as e:
-            print(f"Error en learn: {e}")
+            print(f"Error in learn: {e}")
 
         finally:
-            # Guardado automático tras cada learn, como en A2C
+            # Save model every time
             torch.save(self.model.state_dict(), f"{self.name}.pth")
+
 
 
     def get_training_rounds(self) -> int:
@@ -275,6 +307,26 @@ class DuelingDQNAgent(Agent):
         :return: x training rounds.
         """
         return 1000
+
+from collections import deque
+
+class ReplayBuffer:
+    def __init__(self, capacity=10000):
+        self.buffer = deque(maxlen=capacity)
+
+    def push(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size=64):
+        indices = np.random.choice(len(self.buffer), batch_size, replace=False)
+        batch = [self.buffer[i] for i in indices]
+        states, actions, rewards, next_states, dones = map(np.array, zip(*batch))
+        return states, actions, rewards, next_states, dones
+
+    def __len__(self):
+        return len(self.buffer)
+
+
 
 if __name__ == '__main__':
     n = DuelingDQNNetwork(7,4,6)
