@@ -13,9 +13,9 @@ class Minimax(Agent):
         self.pos = None
 
     def select_action(self, board: ConnectNBoard3D) -> Tuple[int, int]:
-        if self.pos is None:
-            count = np.count_nonzero(board.grid)
-            self.pos = (count % board.num_players) + 1
+        count = np.count_nonzero(board.grid)
+        if self.pos is None and count < 4:
+            self.pos = count + 1
 
         _, action = self.minimax(board, self.depth, True, self.pos, float('-inf'), float('inf'))
         if action is None:
@@ -108,30 +108,34 @@ class Minimax(Agent):
     def custom_reward(self, board: ConnectNBoard3D, player_id: int) -> float:
         # Hiperparámetros (puedes ajustarlos luego)
         WEIGHTS = {
-            "conn_2": 1.4,
-            "conn_3": 5.0,
-            "conn_blocked_penalty": 0.2,
-            "opp_conn_2": 0.6,
-            "opp_conn_3": 2.0,
-            "center_bonus": 0.6,
+            "conn_2": 2.0,
+            "conn_3": 6.0,
+            "conn_2_fully_opened": 2.5,
+            "conn_3_fully_opened": 7.0,
+            "conn_blocked_penalty": 0.3,
+            "opp_conn_2": 1.5,
+            "opp_conn_3": 6.5,
+            "center_bonus": 0.2,
             "height_bonus": 0.1,
         }
 
         score = 0.0
 
         # Bonificaciones por conexiones propias abiertas
-        score += WEIGHTS["conn_2"] * self.count_connections(board, player_id, 2, open_ends=True)
-        score += WEIGHTS["conn_3"] * self.count_connections(board, player_id, 3, open_ends=True)
+        score += WEIGHTS["conn_2"] * self.count_connections(board, player_id, 2, open_ends=1, exact=True)
+        score += WEIGHTS["conn_2_fully_opened"] * self.count_connections(board, player_id, 2, open_ends=2, exact=True)
+        score += WEIGHTS["conn_3"] * self.count_connections(board, player_id, 3, open_ends=1, exact=True)
+        score += WEIGHTS["conn_3_fully_opened"] * self.count_connections(board, player_id, 3, open_ends=2, exact=True)
 
         # Penalización por conexiones propias bloqueadas
-        score -= WEIGHTS["conn_blocked_penalty"] * self.count_connections(board, player_id, 3, open_ends=False)
+        score -= WEIGHTS["conn_blocked_penalty"] * self.count_connections(board, player_id, 3, open_ends=False, exact=True)
 
         # Penalizaciones por conexiones peligrosas del rival
         for opp_id in range(1, board.num_players + 1):
             if opp_id == player_id:
                 continue
-            score -= WEIGHTS["opp_conn_2"] * self.count_connections(board, opp_id, 2, open_ends=True)
-            score -= WEIGHTS["opp_conn_3"] * self.count_connections(board, opp_id, 3, open_ends=True)
+            score -= WEIGHTS["opp_conn_2"] * self.count_connections(board, opp_id, 2, open_ends=True, exact=False)
+            score -= WEIGHTS["opp_conn_3"] * self.count_connections(board, opp_id, 3, open_ends=True, exact=False)
 
         # Control del centro (bonus por controlar el centro del tablero)
         cx, cy = board.width // 2, board.depth // 2

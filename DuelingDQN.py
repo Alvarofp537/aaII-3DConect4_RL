@@ -17,7 +17,10 @@ class DuelingDQNNetwork(nn.Module):
         """
         super().__init__()
         self.input_size = height * width * depth
-        self.num_actions = height * width
+        self.height = height
+        self.width = width
+        self.depth = depth
+        self.num_actions = depth * width
 
         # Backbone común
         self.net = nn.Sequential(
@@ -56,7 +59,7 @@ class DuelingDQNNetwork(nn.Module):
 
 
 class DuelingDQNAgent(Agent):
-    def __init__(self, name:str, model=DuelingDQNNetwork(7,4,6), num_players=4, lr: float = 1e-3, gamma: float = 0.95, epsilon: float = 0.1):
+    def __init__(self, name:str, model=DuelingDQNNetwork(6,7,4), num_players=4, lr: float = 0.1, gamma: float = 0.95, epsilon: float = 0.1):
         super().__init__(name=name)
         self.model = model
         self.num_players = num_players
@@ -75,6 +78,8 @@ class DuelingDQNAgent(Agent):
         # Guarda siempre al inicializar
         torch.save(self.model.state_dict(), f"{self.name}.pth")
 
+
+        self.pos = None
 
     def QuienSoy(self, grid: np.ndarray, player_id: int) -> np.ndarray:
         new_grid = grid.copy()
@@ -105,27 +110,124 @@ class DuelingDQNAgent(Agent):
         board.grid = obs.copy()
         return board
 
-    def select_action(self, board: ConnectNBoard3D, player_id: int) -> int:
+    def select_action(self, board: ConnectNBoard3D) -> int:
         """
         Epsilon-Greedy con máscara de acciones válidas
         """
+        count = np.count_nonzero(board.grid)
+        if count < self.num_players:
+            self.pos = count + 1
         if random.random() < self.epsilon:
             # Acción aleatoria válida
-            x, y = random.choice(board.legal_moves())
-            idx = x * self.model.depth + y
-            return idx
+            action = random.choice(board.legal_moves())
+            return action
         else:
             # Acción greedy entre las válidas
-            obs = self.QuienSoy(board.grid, player_id)
+            obs = self.QuienSoy(board.grid, self.pos)
             state = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)  #.unsqueeze(0)  otra vez
             with torch.no_grad():
                 q_values = self.model(state).squeeze(0)
 
-            mask = self.get_valid_mask(board)
-            masked_q_values = q_values * mask + (1 - mask) * -1e9  # penaliza las inválidas
-            action = masked_q_values.argmax().item()
-            return action
+            action = q_values.argmax().item()
+            x = action // self.model.depth
+            y = action % self.model.depth
+
+            return x,y 
         
+        
+    def count_connections(self, board: ConnectNBoard3D, player_id: int, length: int, open_ends: int = 1, exact: bool = False) -> int:
+        count = 0
+        visited = set()
+
+        gx, gy, gz = board.width, board.depth, board.height
+        grid = board.grid
+
+        for z in range(gz):
+            for x in range(gx):
+                for y in range(gy):
+                    if grid[z, x, y] != player_id:
+                        continue
+                    for dx, dy, dz in board.DIRECTIONS:
+                        key = tuple(sorted([(x + i * dx, y + i * dy, z + i * dz) for i in range(length)]))
+                        if key in visited:
+                            continue
+
+                        segment = []
+                        for i in range(length):
+                            xi, yi, zi = x + i * dx, y + i * dy, z + i * dz
+                            if 0 <= xi < gx and 0 <= yi < gy and 0 <= zi < gz and grid[zi, xi, yi] == player_id:
+                                segment.append((xi, yi, zi))
+                            else:
+                                break
+                        if len(segment) != length:
+                            continue
+
+                        visited.add(key)
+
+                        # Evaluación de extremos abiertos
+                        before = (x - dx, y - dy, z - dz)
+                        after = (x + length * dx, y + length * dy, z + length * dz)
+
+                        open_before = (0 <= before[0] < gx and 0 <= before[1] < gy and 0 <= before[2] < gz and grid[before[2], before[0], before[1]] == 0)
+                        open_after  = (0 <= after[0] < gx and 0 <= after[1] < gy and 0 <= after[2] < gz and grid[after[2], after[0], after[1]] == 0)
+
+                        total_open_ends = int(open_before) + int(open_after)
+
+                        if exact:
+                            if total_open_ends != open_ends:
+                                continue
+                        else:
+                            if total_open_ends < open_ends:
+                                continue
+
+                        count += 1
+        return count
+
+    
+    def custom_reward(self, board: ConnectNBoard3D, player_id: int, done, winner) -> float:
+        # Hiperparámetros (puedes ajustarlos luego)
+        WEIGHTS = {
+            "conn_2": 2.0,
+            "conn_3": 6.0,
+            "conn_2_fully_opened": 2.5,
+            "conn_3_fully_opened": 7.0,
+            "conn_blocked_penalty": 0.3,
+            "opp_conn_2": 1.5,
+            "opp_conn_3": 6.5,
+        }
+
+        score = 0.0
+
+        # En caso de ganar 50 puntos
+        if done and winner:
+            score += 50
+
+        # Bonificaciones por conexiones propias abiertas
+        score += WEIGHTS["conn_2"] * self.count_connections(board, player_id, 2, open_ends=1, exact=True)
+        score += WEIGHTS["conn_2_fully_opened"] * self.count_connections(board, player_id, 2, open_ends=2, exact=True)
+        score += WEIGHTS["conn_3"] * self.count_connections(board, player_id, 3, open_ends=1, exact=True)
+        score += WEIGHTS["conn_3_fully_opened"] * self.count_connections(board, player_id, 3, open_ends=2, exact=True)
+
+        # Penalización por conexiones propias bloqueadas
+        score -= WEIGHTS["conn_blocked_penalty"] * self.count_connections(board, player_id, 3, open_ends=False, exact=True)
+
+        # Penalizaciones por conexiones peligrosas del rival
+        for opp_id in range(1, board.num_players + 1):
+            if opp_id == player_id:
+                continue
+            score -= WEIGHTS["opp_conn_2"] * self.count_connections(board, opp_id, 2, open_ends=True, exact=False)
+            score -= WEIGHTS["opp_conn_3"] * self.count_connections(board, opp_id, 3, open_ends=True, exact=False)
+
+        # # Control del centro (bonus por controlar el centro del tablero)
+        # cx, cy = board.width // 2, board.depth // 2
+        # score += WEIGHTS["center_bonus"] * np.count_nonzero(board.grid[:, cx, cy] == player_id)
+
+        # # Bonus por ocupar capas superiores
+        # for z in range(board.height):
+        #     score += WEIGHTS["height_bonus"] * np.count_nonzero(board.grid[z] == player_id) * z
+
+        return score
+
 
     def learn(self, obs, action, reward, next_obs, done):
         self.model.load_state_dict(torch.load(f"./{self.name}.pth"))
@@ -148,7 +250,10 @@ class DuelingDQNAgent(Agent):
             with torch.no_grad():
                 next_q_values = self.model(next_obs)
                 max_next_q_value = next_q_values.max(dim=1)[0]
-
+            if reward < 0: # Movimiento invalido:
+                reward = -100
+            else:
+                reward  = self.custom_reward(next_board, self.pos, done, reward) - self.custom_reward(board, self.pos, 0, 0)
             target_q_value = reward + (1 - done) * self.gamma * max_next_q_value
             loss = F.mse_loss(q_value, target_q_value)
 
@@ -170,3 +275,15 @@ class DuelingDQNAgent(Agent):
         :return: x training rounds.
         """
         return 1000
+
+if __name__ == '__main__':
+    n = DuelingDQNNetwork(7,4,6)
+    a = DuelingDQNAgent('a')
+    a.pos = 2
+    entrada = torch.tensor(a.QuienSoy(ConnectNBoard3D(height=6,depth=4,width=7,num_players=4).grid,2),dtype=torch.float32).unsqueeze(0)
+    print(entrada)
+    print(f"{entrada.shape = }")
+    q = n.forward(entrada)
+    print(q.shape)
+    print(q.squeeze(0))
+    print('sol:',a.select_action(ConnectNBoard3D(height=6,depth=4,width=7,num_players=4)))

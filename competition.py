@@ -11,8 +11,9 @@ import matplotlib.pyplot as plt
 import torch
 
 from A2C import A2C
-from Blocker import Blocker
-from Selfish import Selfish
+from DuelingDQN import DuelingDQNAgent as DQN
+from Blocker import Blocker, BlockerDeluxe
+from Selfish import Selfish, IntelligentSelfish
 from Minimax import Minimax
 
 
