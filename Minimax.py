@@ -60,14 +60,13 @@ class Minimax(Agent):
 
         return best_value, best_action
 
-    
-    def count_connections(self, board: ConnectNBoard3D, player_id: int, length: int, open_ends: bool = True) -> int:
+       
+    def count_connections(self, board: ConnectNBoard3D, player_id: int, length: int, open_ends: int = 1, exact: bool = False) -> int:
         count = 0
         visited = set()
 
         gx, gy, gz = board.width, board.depth, board.height
         grid = board.grid
-        n = board.n_to_connect
 
         for z in range(gz):
             for x in range(gx):
@@ -91,19 +90,25 @@ class Minimax(Agent):
 
                         visited.add(key)
 
-                        # Check for open ends if requested
-                        if open_ends:
-                            before = (x - dx, y - dy, z - dz)
-                            after = (x + length * dx, y + length * dy, z + length * dz)
+                        # Evaluación de extremos abiertos
+                        before = (x - dx, y - dy, z - dz)
+                        after = (x + length * dx, y + length * dy, z + length * dz)
 
-                            open_before = (0 <= before[0] < gx and 0 <= before[1] < gy and 0 <= before[2] < gz and grid[before[2], before[0], before[1]] == 0)
-                            open_after = (0 <= after[0] < gx and 0 <= after[1] < gy and 0 <= after[2] < gz and grid[after[2], after[0], after[1]] == 0)
+                        open_before = (0 <= before[0] < gx and 0 <= before[1] < gy and 0 <= before[2] < gz and grid[before[2], before[0], before[1]] == 0)
+                        open_after  = (0 <= after[0] < gx and 0 <= after[1] < gy and 0 <= after[2] < gz and grid[after[2], after[0], after[1]] == 0)
 
-                            if not (open_before or open_after):
+                        total_open_ends = int(open_before) + int(open_after)
+
+                        if exact:
+                            if total_open_ends != open_ends:
+                                continue
+                        else:
+                            if total_open_ends < open_ends:
                                 continue
 
                         count += 1
         return count
+
     
     def custom_reward(self, board: ConnectNBoard3D, player_id: int) -> float:
         # Hiperparámetros (puedes ajustarlos luego)
