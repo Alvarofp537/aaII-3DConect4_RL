@@ -194,17 +194,6 @@ def tournament(
         print(f"{str(agent):>6} | {pts:>7}")
     print("-" * 18)
 
-
-if __name__ == "__main__":
-    tournament(
-        agents=[RandomAgent(name=f'Agent {i}') for i in range(2)]+[A2C(name=f'A2c_{i}') for i in range(4)],
-        competitors_per_round=4,
-        num_rounds=10,
-        max_score=3,
-        score_to_substract=1,
-    )
-
-
 import torch
 
 def train_multi_agents(agents: A2C, episodes=100, gamma=0.95, lam=0.95, imprimir=False):
@@ -251,5 +240,72 @@ def train_multi_agents(agents: A2C, episodes=100, gamma=0.95, lam=0.95, imprimir
     env.close()
     print("Entrenamiento finalizado para todos los agentes.")
 
+import numpy as np
+import matplotlib.pyplot as plt
+from ipywidgets import interact, IntSlider
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.patches import Patch
+
+def plot_3d_board(grid, ax, agent_colors):
+    ax.clear()
+    ax.set_title("3D Connect-N Board")
+    ax.set_xlim(0, grid.shape[2])
+    ax.set_ylim(0, grid.shape[1])
+    ax.set_zlim(0, grid.shape[0])
+    ax.set_xlabel("Y (depth)")
+    ax.set_ylabel("X (width)")
+    ax.set_zlabel("Z (height)")
+
+    for z in range(grid.shape[0]):
+        for x in range(grid.shape[1]):
+            for y in range(grid.shape[2]):
+                player = grid[z, x, y]
+                if player != 0:
+                    color = agent_colors.get(player, "black")
+                    ax.scatter(y + 0.5, x + 0.5, z + 0.5, c=color, s=200)
+
+    ax.view_init(elev=30, azim=45)
+    ax.grid(True)
+
+def visualize_match(states, agent_names):
+    """
+    Visualize the evolution of a match with a legend.
+    
+    :param states: list of 3D numpy arrays (shape [height, width, depth])
+    :param agent_names: list of agent names in the order they play (index 0 = player 1, etc.)
+    """
+    # Assign consistent colors to each player
+    default_colors = ["red", "blue", "green", "orange", "purple", "brown", "pink", "cyan"]
+    agent_colors = {i + 1: default_colors[i % len(default_colors)] for i in range(len(agent_names))}
+
+    # For legend
+    legend_elements = [
+        Patch(facecolor=agent_colors[i + 1], edgecolor='black', label=f"{i+1}: {agent_names[i]}")
+        for i in range(len(agent_names))
+    ]
+
+    def view_step(step):
+        fig = plt.figure(figsize=(7, 6))
+        ax = fig.add_subplot(111, projection='3d')
+        plot_3d_board(states[step], ax, agent_colors)
+
+        # Place legend outside the plot area
+        plt.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+        plt.tight_layout()
+        plt.show()
+
+    interact(
+        view_step,
+        step=IntSlider(min=0, max=len(states) - 1, step=1, value=0, description="Step")
+    )
 
 
+
+if __name__ == "__main__":
+    tournament(
+        agents=[RandomAgent(name=f'Agent {i}') for i in range(2)]+[A2C(name=f'A2c_{i}') for i in range(4)],
+        competitors_per_round=4,
+        num_rounds=10,
+        max_score=3,
+        score_to_substract=1,
+    )

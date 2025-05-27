@@ -29,6 +29,7 @@ class Minimax(Agent):
         elif winner and winner != self.pos:
             return -10000 - depth, None
         elif depth == 0 or board.is_full():
+            # Guardar los tableros en un hash (except key error, recalcular)
             return self.custom_reward(board, self.pos), None
 
         best_value = float('-inf') if maximizing else float('inf')
