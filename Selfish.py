@@ -74,7 +74,7 @@ class Selfish(Agent):
 
 
 
-class IntelligentSelfish(Agent):
+class Greedier(Agent):
     """Agente egoísta que busca ganar rápido sin habilitar victorias rivales."""
 
     def __init__(self, name: str):
@@ -100,30 +100,24 @@ class IntelligentSelfish(Agent):
                 return (x, y)
 
             # Evita jugadas que permitan victoria inmediata a otros
-            dangerous = False
             for rival_id in range(1, board.num_players + 1):
                 if rival_id == self.pos:
                     continue
-                for rx, ry in temp_board.legal_moves():
-                    try:
-                        rival_board = temp_board.clone()
-                        rz = rival_board.place_token(rival_id, rx, ry)
-                        if rival_board.check_winner() == rival_id:
-                            dangerous = True
-                            break
-                    except ValueError:
-                        continue
-                if dangerous:
-                    break
+                try:
+                    rz = temp_board.place_token(rival_id, x, y)
+                except ValueError:
+                    continue
 
-            if dangerous:
-                continue  # Jugada descartada
+                if temp_board.check_winner() == rival_id:
+                    return (x, y)
 
+            
             line_score = self.max_aligned(temp_board.grid, x, y, z, self.pos, board)
             if line_score > best_score:
                 best_score = line_score
                 best_move = (x, y)
 
+        #en caso de no heber tenido que bloquear ni poder ganar, elije la mejor opción
         return best_move if best_move else random.choice(board.legal_moves())
 
     def max_aligned(self, grid, x0, y0, z0, player, board) -> int:
