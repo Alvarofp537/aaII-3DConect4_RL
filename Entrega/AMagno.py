@@ -60,8 +60,8 @@ class DuelingDQNNetwork(nn.Module):
 
 
 
-class DuelingDQNAgent(Agent):
-    def __init__(self, name:str = 'DQN_Player', model=DuelingDQNNetwork(6,7,4), num_players=4, lr: float = 0.01, gamma: float = 0.95, epsilon: float = 0.1):
+class AMagno(Agent):
+    def __init__(self, name:str = 'AMagno', model=DuelingDQNNetwork(6,7,4), num_players=4, lr: float = 0.01, gamma: float = 0.95, epsilon: float = 0.1):
         super().__init__(name=name)
         self.model = model
         self.num_players = num_players
