@@ -84,7 +84,7 @@ class DuelingDQNAgent(Agent):
         self.pos = None
         self.target_model = copy.deepcopy(self.model)
         self.replay_buffer = ReplayBuffer()
-        self.batch_size = 64
+        self.batch_size = 128
 
     def QuienSoy(self, grid: np.ndarray, player_id: int) -> np.ndarray:
         new_grid = grid.copy()
@@ -134,7 +134,11 @@ class DuelingDQNAgent(Agent):
             with torch.no_grad():
                 q_values = self.model(state).squeeze(0)
 
-            action = q_values.argmax().item()
+            valid_mask = self.get_valid_mask(board)  # shape: (num_actions,)
+            masked_q_values = q_values.clone()
+            masked_q_values[valid_mask == 0] = -float('inf')  # Invalida las acciones ilegales
+
+            action = masked_q_values.argmax().item()
             x = action // self.model.depth
             y = action % self.model.depth
 
@@ -276,6 +280,15 @@ class DuelingDQNAgent(Agent):
             # Compute target Q-values from target network
             with torch.no_grad():
                 next_q_values = self.target_model(batch_next_obs_tensor)
+
+                # Enmascarar acciones inválidas para cada next_obs individualmente
+                for i in range(self.batch_size):
+                    next_board = self.obs_to_board(batch_next_obs[i])
+                    valid_mask = self.get_valid_mask(next_board)
+                    # Asignar -inf a acciones inválidas para que no se consideren en el argmax
+                    next_q_values[i][valid_mask == 0] = -float('inf')
+
+                # Usar solo los Q-values de acciones válidas
                 max_next_q_values = next_q_values.max(dim=1)[0]
 
             target_q_values = batch_rewards_tensor + (1 - batch_dones_tensor) * self.gamma * max_next_q_values
@@ -287,7 +300,7 @@ class DuelingDQNAgent(Agent):
             self.optimizer.step()
 
             # Sync target model
-            if self.steps % 30 == 0:
+            if self.steps % self.batch_size//2 == 0:
                 self.target_model.load_state_dict(self.model.state_dict())
 
             self.steps += 1

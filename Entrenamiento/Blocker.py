@@ -128,7 +128,7 @@ class BlockerDeluxe(Agent):
         for x in range(board.width):
             for y in range(board.depth):
                 for z in range(board.height):
-                    if board.grid[x, y, z] != player_id:
+                    if board.grid[z,x,y] != player_id:
                         continue
                     for dx, dy, dz in directions:
                         count = 1
@@ -137,7 +137,7 @@ class BlockerDeluxe(Agent):
                             0 <= nx < board.width and
                             0 <= ny < board.depth and
                             0 <= nz < board.height and
-                            board.grid[nx, ny, nz] == player_id
+                            board.grid[nz, nx, ny] == player_id
                         ):
                             count += 1
                             nx += dx

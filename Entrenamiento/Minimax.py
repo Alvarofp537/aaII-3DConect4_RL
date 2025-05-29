@@ -1,6 +1,7 @@
 from connect_n_3d import Agent, ConnectNBoard3D
 from typing import Tuple
 
+from concurrent.futures import ProcessPoolExecutor
 import random
 import numpy as np
 
@@ -11,6 +12,7 @@ class Minimax(Agent):
         super().__init__(name=name)
         self.depth = depth
         self.pos = None
+        self.transposition_table = {}  # Caché local solo para este agente
 
     def select_action(self, board: ConnectNBoard3D) -> Tuple[int, int]:
         count = np.count_nonzero(board.grid)
@@ -23,6 +25,9 @@ class Minimax(Agent):
         return action
 
     def minimax(self, board: ConnectNBoard3D, depth: int, maximizing: bool, current_player: int, alpha: float, beta: float):
+        key = (hash(board), depth, maximizing, current_player)
+        if key in self.transposition_table:
+            return self.transposition_table[key]
         winner = board.check_winner()
         if winner == self.pos:
             return 10000 + depth, None
@@ -58,7 +63,7 @@ class Minimax(Agent):
 
             if beta <= alpha:
                 break  # poda alpha-beta
-
+        self.transposition_table[key] = (best_value, best_action)
         return best_value, best_action
 
        

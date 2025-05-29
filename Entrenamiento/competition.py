@@ -13,9 +13,9 @@ import torch
 from A2C import A2C
 from DuelingDQN import DuelingDQNAgent as DQN
 from Blocker import Blocker, BlockerDeluxe
-from Selfish import Selfish, IntelligentSelfish
+from Selfish import Selfish, IntelligentSelfish, Greedier
 from Minimax import Minimax
-
+from PPO import PPOAgent as PPO
 
 def play_episode(*, env: ConnectN3DEnv, agents, learn: bool = False, imprimir= False) -> Agent:
     """Juega una partida completa entre varios agentes.
@@ -97,6 +97,7 @@ def tournament(
         # Copiamos todos los agentes para que en cada ronda tengan su
         # el mismo estado inicial
         group = [copy.deepcopy(agent) for agent in group]
+        random.shuffle(group)
 
         # Ronda de calentamiento (para aprender de los competidores). El
         # número de rondas de entrenamiento se extraerá aleatoriamente
@@ -119,6 +120,7 @@ def tournament(
         log_every = max(1, train_rounds // 20)  # Cada cuántas rondas guardamos evolución
 
         for i in range(1, train_rounds + 1):
+            random.shuffle(group)
             winner = play_episode(env=env, agents=group, learn=True, imprimir=imprimir)
             if winner:
                 train_winners[winner.name] += 1
