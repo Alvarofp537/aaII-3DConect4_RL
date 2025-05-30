@@ -40,7 +40,7 @@ class PPOActorCritic(nn.Module):
         return self.actor(x), self.critic(x)
     
 class PPOAgent(Agent):
-    def __init__(self, name, height=6, width=7, depth=4, num_players=4, lr=1e-4, gamma=0.99, eps_clip=0.2):
+    def __init__(self, name, height=6, width=7, depth=4, num_players=4, lr=10.001, gamma=0.99, eps_clip=0.2):
         super().__init__(name=name)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.height = height
@@ -117,10 +117,17 @@ class PPOAgent(Agent):
         x = action_idx.item() // self.depth
         y = action_idx.item() % self.depth
 
+
+        if random.random() < 0.1:
+            x,y =  random.choice(board.legal_moves())
+            action_idx = torch.tensor([x*self.depth+y])
+
         self.last_obs = obs  # Para usarlo en learn()
         self.last_action = action_idx.item()
         self.last_log_prob = log_prob.item()
         self.last_value = value.item()
+
+
 
         return x, y
 
@@ -130,18 +137,28 @@ class PPOAgent(Agent):
             # Recompute the reward BEFORE storing it
         board = self.obs_to_board(obs)
         next_board = self.obs_to_board(next_obs)
+
+        # Detectar si la acción bloqueó una amenaza:
+        opps = [p for p in range(1, self.num_players+1) if p != self.pos]
+        threat_before = max([self.count_connections(board, opp, 3, open_ends=1, exact=True) for opp in opps])
+        threat_after = max([self.count_connections(next_board, opp, 3, open_ends=1, exact=True) for opp in opps])
+
+        block_reward = 0
+        if threat_before > threat_after:
+            block_reward = 500  # ajusta este peso
+
         if reward < 0:
             reward = -100  # invalid move penalty
         else:
-            reward = self.custom_reward(next_board, self.pos, done, reward) - self.custom_reward(board, self.pos, False, 0)
+            reward = self.custom_reward(next_board, self.pos, done, reward) - self.custom_reward(board, self.pos, False, 0) + block_reward
 
         self.rewards.append(reward)
         self.rollout.append((self.QuienSoy(obs, self.pos), self.last_action, self.last_log_prob, self.last_value))
 
-        if done:
-            self.finish_rollout(next_obs)
-            self.rollout = []
-            self.rewards = []
+        # if done:
+        #     self.finish_rollout(next_obs)
+        #     self.rollout = []
+        #     self.rewards = []
         # except Exception as e:
         #     print(f'Error: {e}')
         # finally:
@@ -187,13 +204,17 @@ class PPOAgent(Agent):
             policy_loss = -torch.min(surr1, surr2).mean()
 
             value_loss = F.mse_loss(values.squeeze(), ret_batch.detach())
-            loss = policy_loss + 0.5 * value_loss
+            entropy = dist.entropy().mean()
+            loss = policy_loss + 0.5 * value_loss - 0.01 * entropy 
+
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
         torch.save(self.model.state_dict(), f"{self.name}.pth")
+        self.rollout = []
+        self.rewards = []
 
 
            
@@ -250,12 +271,12 @@ class PPOAgent(Agent):
         # Hiperparámetros (puedes ajustarlos luego)
         WEIGHTS = {
             "conn_2": 2.0,
-            "conn_3": 6.0,
+            "conn_3": 30.0,
             "conn_2_fully_opened": 2.5,
-            "conn_3_fully_opened": 7.0,
+            "conn_3_fully_opened": 40.0,
             "conn_blocked_penalty": 0.3,
-            "opp_conn_2": 1.5,
-            "opp_conn_3": 6.5,
+            "opp_conn_2": 10.5,
+            "opp_conn_3": 30.5,
         }
 
         score = 0.0
@@ -263,6 +284,8 @@ class PPOAgent(Agent):
         # En caso de ganar 50 puntos
         if done and winner:
             score += 50
+        else:
+            score -= 50  # castiga si gana otro
 
         # Bonificaciones por conexiones propias abiertas
         score += WEIGHTS["conn_2"] * self.count_connections(board, player_id, 2, open_ends=1, exact=True)

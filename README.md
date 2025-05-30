@@ -80,3 +80,5 @@ Para DQN también intentamos que aprendiese primero acción a acción y luego po
 Por último entrenamos un PPO, y fue el modelo que más rápido aprendió. Probablemente también porque todo estaba ya muy preparado por la experiencia con los anteriores y fue solo ejecutarlo.  
 Es el modelo que mejor funciona en la mayoría de los casos, llegando a ganar a Minimax con una frecuencia relativamente buena.
 PPO aprende únicamente al acabar la partida y es el modelo que mejor ha aprendido.
+Aún así depende de en que puesto juegue, ya que contra el selfish, si juega después, la gran mayoría de las veces pierde, siempre y cuando no haya alguien bloqueando.
+Por lo tanto podríamos concluir que aunque parezca que sí, en realidad no ha aprendido del todo. Lo mimso pasa con DQN

@@ -135,7 +135,7 @@ if __name__ == "__main__":
     from AMagno import AMagno
     from Heuristicos import Almanzor, Bismark
     tournament(
-        agents=[AbderramanIII(), AMagno(),Almanzor(), Bismark()],
+        agents=[AMagno(), Bismark(), AbderramanIII(), Almanzor()],
         competitors_per_round=4,
         num_rounds=10,
         max_score=10,
