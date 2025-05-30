@@ -55,6 +55,10 @@ def play_episode(*, env: ConnectN3DEnv, agents, learn: bool = False, imprimir= F
         # Vemos el nuevo estado del entorno para el próximo jugador
         obs = next_obs
         i += 1
+    if learn:
+        for agent in agents:
+            if 'PPO' in agent.name:
+                agent.finish_rollout(obs)
     if imprimir:
         if not learn:
             print('Ganador:',agents[info["winner"] - 1] if info["winner"] else None)

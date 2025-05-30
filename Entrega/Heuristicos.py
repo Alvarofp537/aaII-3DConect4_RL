@@ -88,7 +88,7 @@ class Almanzor(Agent):
 class Bismark(Agent):
     """Agente que usa Minimax para buscar la mejor jugada futura posible."""
 
-    def __init__(self, name: str, depth: int = 3):
+    def __init__(self, name: str='Bismark', depth: int = 3):
         super().__init__(name=name)
         self.depth = depth
         self.pos = None

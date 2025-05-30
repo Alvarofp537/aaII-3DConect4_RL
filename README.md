@@ -19,6 +19,8 @@ Para entrenarlos, primero hemos dejado que entrenen entre sí, para que descubra
 Entregamos como mejores modelos basados en redes neuronales:
 - AbderramanIII (PPO)
 - AMAgno (DQN)
+> [!NOTE]
+> Ambos cargan sus respectivos aprendizajes de los archivos adjuntados con el mismo nombre.
 
 y 2 heurísticos que ganaron muchas partidas:
 - Almanzor (IntelligentSelfish)
@@ -37,7 +39,7 @@ Con eso conseguimos que, independientemente de la posición en la que juegue, se
 
 Al empezar a entrenar y ver que no aprendía, nos fijamos en que las recompensas eran muy escasas y además se aplicaban solo al ganar o realizar una acción inválida. Esto es un problema porque el `learn` se llama en cada acción, y las acciones que realmente te hacen ganar no se premian.
 
-Por lo tanto, definimos una función que nos calculaba una reward por cada tablero, basándonos en el número de posibilidades de ganar y cómo de cerca estábamos de ello, menos la probabilidad de ganar de los contrincantes. Así, si consigues mejorar el tablero, la recompensa es inmediata.
+Por lo tanto, definimos una función que calcula una recompensa por cada tablero, basándonos en el número de posibilidades de ganar y cómo de cerca estábamos de ello, menos la probabilidad de ganar de los contrincantes. Así, si consigues mejorar el tablero, la recompensa es inmediata.
 
 Después de entrenar un largo rato, descubrimos también que, principalmente contra ciertos profesores en específico, pero en general también, los modelos se encabezonaban con una posición, incluso cuando la fila estaba llena. El modelo no conseguía aprender pese a las recompensas muy negativas, por lo que tuvimos que aplicar una máscara que pone a 0 la probabilidad o valor Q de las posiciones inválidas para esa situación.
 
@@ -67,11 +69,14 @@ Luego hemos incluido modificaciones de los anteriores:
 ### A2C
 Este fue el primer modelo que implementamos y el que peor ha aprendido. No conseguimos que se adecuase al problema.  
 Probamos con diferentes arquitecturas de la red, primero aplanando el tablero, como en el resto de los modelos, pero también probamos con una convolucional 3D para ver si aprendía mejor el tablero.
+También intentamos que aprendiese acción a acción y luego con partidas completas.
 
 ### DQN
 Fue el segundo modelo que implementamos y le costó aprender, pero acabó aprendiendo de todos, aunque sin llegar a ganar al Minimax y perdiendo, dependiendo de la partida, con IntelligentSelfish.  
 Aun así, es un modelo que ha aprendido bastante y que, dependiendo de la combinación de agentes que haya en la partida, es el mejor modelo que tenemos.
+Para DQN también intentamos que aprendiese primero acción a acción y luego por bloque de acciones. Este segundo enfoque permite mejorar las recompensas, y darlas acumuladas. Además hicimos que el modelo para calcular recompensas futuras en la función de bellman se actualizase con menos frecuencia, añadiendo estabilidad al aprendizaje. Estas mejoras ayudaron a que aprendiese más. 
 
 ### PPO
 Por último entrenamos un PPO, y fue el modelo que más rápido aprendió. Probablemente también porque todo estaba ya muy preparado por la experiencia con los anteriores y fue solo ejecutarlo.  
 Es el modelo que mejor funciona en la mayoría de los casos, llegando a ganar a Minimax con una frecuencia relativamente buena.
+PPO aprende únicamente al acabar la partida y es el modelo que mejor ha aprendido.

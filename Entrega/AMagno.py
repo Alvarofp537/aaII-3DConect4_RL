@@ -137,10 +137,7 @@ class AMagno(Agent):
             return x,y 
     
     def __select_learn(self, board):
-        jugador_a_seguir = random.choice([i for i in range(4) if i != self.pos])
-
-        # Nos gusta el centro
-        return 0,0
+        return random.choice(board.legal_moves())
 
     def select_action(self, board):
         count = np.count_nonzero(board.grid)

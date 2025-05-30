@@ -115,21 +115,7 @@ class AbderramanIII(Agent):
 
         return x, y
 
-    def __select_blocker(self, board):
-        for x, y in board.legal_moves():
-            # Try placing a token for every opponent (not self)
-            for player_id in range(1, board.num_players + 1):
-                if self.pos != None and player_id == self.pos:
-                    continue # Es él
-                temp_board = board.clone()
-                try:
-                    temp_board.place_token(player_id, x, y)
-                    if temp_board.check_winner() == player_id:
-                        return (x, y)  # Block this winning move
-                except ValueError:
-                    continue  # Skip if the column is already full
-
-        # No immediate threat found; pick a random legal move
+    def __select_learn(self, board):
         return random.choice(board.legal_moves())
 
     def select_action(self, board):
@@ -141,7 +127,7 @@ class AbderramanIII(Agent):
             return self.__select_action(board)
         else:
 
-            return self.__select_blocker(board)
+            return self.__select_learn(board)
 
     def learn(self, obs, action, reward, next_obs, done):
         self.learning = True
@@ -244,5 +230,4 @@ class AbderramanIII(Agent):
 
 
     def get_training_rounds(self):
-        # return -100 # Se puede?
-        return 0
+        return 0 # -100
